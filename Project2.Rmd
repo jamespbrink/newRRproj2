@@ -1,0 +1,187 @@
+---
+title: "Analyzing the Storms:  Their Effect on Population Health and Economic Consequences"
+output: 
+html_document:
+keep_md: true
+---
+
+<br />
+<br />
+
+##Synopsis
+Text
+
+<br />
+<br />
+
+## Data Processing
+We load the data into R that was downloaded from the NOAA storm database, decompressing the file if necessary.
+```{r cache=TRUE, message=FALSE}
+##check to see if data is decompressed, if it isn't then decompress it
+library(R.utils)
+if (!file.exists("repdata-data-StormData.csv")){   
+        bunzip2("repdata-data-StormData.csv.bz2")
+}
+data <- read.csv("repdata-data-StormData.csv")
+head(data)
+```
+
+Select only the EVTYPE column and the columns relating to physical health and economic damage. (EVTYPE, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP).  Change all names to lowercase to make them easier to work with.
+
+```{r cach=TRUE, message=FALSE, warning=FALSE}
+##select columns using select function in dplyr library
+library(dplyr)
+data <- select(data, EVTYPE, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP)
+
+## change names to lowercase
+names(data) <- tolower(names(data))
+
+## change exponent fields to lowercase
+data$propdmgexp <- tolower(data$propdmgexp)
+data$cropdmgexp <- tolower(data$cropdmgexp)
+
+## replace the exponents with numeric values
+data$propdmgexp <- gsub("h", "100", data$propdmgexp)
+data$propdmgexp <- gsub("k", "1000", data$propdmgexp)
+data$propdmgexp <- gsub("m", "1000000", data$propdmgexp)
+data$propdmgexp <- gsub("b", "1000000000", data$propdmgexp)
+
+data$cropdmgexp <- gsub("h", "100", data$cropdmgexp)
+data$cropdmgexp <- gsub("k", "1000", data$cropdmgexp)
+data$cropdmgexp <- gsub("m", "1000000", data$cropdmgexp)
+data$cropdmgexp <- gsub("b", "1000000000", data$cropdmgexp)
+
+data$propdmgexp <- as.numeric(data$propdmgexp)
+data$cropdmgexp <- as.numeric(data$cropdmgexp)
+
+##add propdamage and cropdamage fields
+data <- mutate(data, propDamage = propdmg * propdmgexp, cropDamage = cropdmg * cropdmgexp)
+
+##subset the dataset to only exclude the propdmg, propdmgexp, cropdmg, 
+##cropdmgexp columns
+data <- select(data, evtype, fatalities, injuries, propDamage, cropDamage)
+
+head(data)
+```
+
+Group data based on event type.
+```{r}
+##group data by evtype, find number of injuries and fatalities for each event
+groupedData <- group_by(data, evtype)
+
+groupedData
+```
+
+Process and subset data for effects on public health.
+```{r}
+healthEffect <- summarise(groupedData, deaths=sum(fatalities, na.rm=TRUE), injured=sum(injuries, na.rm=TRUE))
+
+##add column 'incidents' that is total of both injuries and fatalities
+healthEffect <- mutate(healthEffect, incidents = deaths + injured)
+
+##convert event types to title case
+events <- healthEffect[,1]
+events <- gsub("\\b([A-Z])([A-Z]+)", "\\U\\1\\L\\2" ,events, perl=TRUE)
+healthEffect[,1] <- events
+
+healthEffect
+```
+
+Process and subset data for economic impact.
+```{r}
+ecoEffect <- summarise(groupedData, propDamage=sum(propDamage, na.rm=TRUE), cropDamage=sum(cropDamage, na.rm=TRUE))
+
+##add column 'incidents' that is total of both injuries and fatalities
+ecoEffect <- mutate(ecoEffect, totalDamage = propDamage + cropDamage)
+
+##convert event types to title case
+events <- ecoEffect[,1]
+events <- gsub("\\b([A-Z])([A-Z]+)", "\\U\\1\\L\\2" ,events, perl=TRUE)
+ecoEffect[,1] <- events
+
+ecoEffect
+```
+
+##Results
+Find the top 10 events for incidents, defined by the sum of injuries and fatalities.
+```{r message=FALSE}
+##subset to the top 10 incidents, melt table so it can be plotted
+library(reshape)
+n <- 10
+topIncidents <- arrange(healthEffect, desc(incidents))[1:n,]
+plotData <- as.data.frame(melt(topIncidents))
+
+##replace variables for plot
+plotData$variable <- gsub("deaths", "Fatalities", plotData$variable)
+plotData$variable <- gsub("incidents", "Fatalities & Injuries", plotData$variable)
+plotData$variable <- gsub("injured", "Injuries", plotData$variable)
+
+head(plotData)
+```
+
+```{r message=FALSE, fig.width = 8, fig.height= 8}
+## load gridExtra library, need to plot as 3 charts rather than normal facets so y
+## axis is more readable
+library(gridExtra)
+library(ggplot2)
+
+g1 <- ggplot(subset(plotData, variable == "Fatalities & Injuries"), aes(evtype, value))
+g1 <- g1 + geom_bar(stat="identity") + facet_wrap(~variable)
+g1 <- g1 + ggtitle("Effects on Population Health by Event Type") 
+g1 <- g1 + xlab("Event") + ylab("Count")
+g1 <- g1 + theme(text = element_text(size=9))
+
+g2 <- ggplot(subset(plotData, variable == "Fatalities"), aes(evtype, value))
+g2 <- g2 + geom_bar(stat="identity") + facet_wrap(~variable)
+g2 <- g2 + xlab("Event") + ylab("Count")
+g2 <- g2 + theme(text = element_text(size=9))
+
+g3 <- ggplot(subset(plotData, variable == "Injuries"), aes(evtype, value))
+g3 <- g3 + geom_bar(stat="identity") + facet_wrap(~variable)
+g3 <- g3 + xlab("Event") + ylab("Count")
+g3 <- g3 + theme(text = element_text(size=9))
+
+grid.arrange(g1,g2,g3)
+```
+
+Find the top 10 events for total damage, defined as the sum of crop and property damage.
+```{r message=FALSE}
+##subset to the top 10 incidents, melt table so it can be plotted
+n <- 10
+topEco <- arrange(ecoEffect, desc(totalDamage))[1:n,]
+plotData <- as.data.frame(melt(topEco))
+
+##replace variables for plot
+plotData$variable <- gsub("cropDamage", "Crop Damage $", plotData$variable)
+plotData$variable <- gsub("propDamage", "Property Damage $", plotData$variable)
+plotData$variable <- gsub("totalDamage", "Total Damage $", plotData$variable)
+
+head(plotData)
+```
+
+```{r message=FALSE, fig.width = 8, fig.height= 8}
+## load gridExtra library, need to plot as 3 charts rather than normal facets so y
+## axis is more readable
+
+g1 <- ggplot(subset(plotData, variable == "Total Damage $"), aes(evtype, value))
+g1 <- g1 + geom_bar(stat="identity") + facet_wrap(~variable)
+g1 <- g1 + ggtitle("Economic Impact by Event Type") 
+g1 <- g1 + xlab("Event") + ylab("Dollars")
+g1 <- g1 + theme(text = element_text(size=9))
+
+g2 <- ggplot(subset(plotData, variable == "Property Damage $"), aes(evtype, value))
+g2 <- g2 + geom_bar(stat="identity") + facet_wrap(~variable)
+g2 <- g2 + xlab("Event") + ylab("Dollars")
+g2 <- g2 + theme(text = element_text(size=9))
+
+g3 <- ggplot(subset(plotData, variable == "Crop Damage $"), aes(evtype, value))
+g3 <- g3 + geom_bar(stat="identity") + facet_wrap(~variable)
+g3 <- g3 + xlab("Event") + ylab("Dollars")
+g3 <- g3 + theme(text = element_text(size=9))
+
+grid.arrange(g1,g2,g3)
+```
+<br />
+<br />
+
+
