@@ -1,21 +1,20 @@
 ---
-title: "Analyzing the Storms:  Their Effect on Population Health and Economic Consequences"
+title: "Tornados and Floods Are the Storms That Have the Most Impact on Population Health and the Economy Respectively"
 output: 
 html_document:
 keep_md: true
 ---
 
 <br />
-<br />
 
 ##Synopsis
-Text
+In this report we aim to show which types of storms that have are most harmful to population health as well as which types of storms have the greatest economic consequences.  To accomplish this we analyzed data downloaded from the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database.  From this data, we found that between 1950 and November 2011, the timeframe that the databased covered, tornadoes were responsible for the greatest cumulative harm on population health, with more deaths and more injuries attributed to tornadoes than any other storm type by a wide margin.  Additionally we found that during the same time period floods were the storm type that had the greatest economic consequences.  Despite the fact that drought was clearly responsible for the greatest cumulative crop damage during the measured period, the property damage associated with flooding caused floods to dwarf drought when analyzing the total economic impact of both property damage and crop damage combined.
 
-<br />
 <br />
 
 ## Data Processing
-We load the data into R that was downloaded from the NOAA storm database, decompressing the file if necessary.
+Loading Data:  
+We load the data into R that was downloaded from the NOAA storm database, decompressing the file if it has not been done so already.
 ```{r cache=TRUE, message=FALSE}
 ##check to see if data is decompressed, if it isn't then decompress it
 library(R.utils)
@@ -26,8 +25,12 @@ data <- read.csv("repdata-data-StormData.csv")
 head(data)
 ```
 
-Select only the EVTYPE column and the columns relating to physical health and economic damage. (EVTYPE, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP).  Change all names to lowercase to make them easier to work with.
-
+<br />
+Data Processing:  
+1. Select only the EVTYPE column and the columns relating to physical health and economic damage. (EVTYPE, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP).  
+2. Change all names, as well as the values of the exponent fields, to lowercase to make them easier to work with.  
+3. Replace the exponent codes with the proper multiplier and then multiply those multipliers by the observed values.  
+4. Select only the evtype, fatalities, injuries, propDamage, and cropDamage columns.
 ```{r cach=TRUE, message=FALSE, warning=FALSE}
 ##select columns using select function in dplyr library
 library(dplyr)
@@ -64,15 +67,17 @@ data <- select(data, evtype, fatalities, injuries, propDamage, cropDamage)
 head(data)
 ```
 
-Group data based on event type.
+<br />
+5. Group data based on event type.
 ```{r}
 ##group data by evtype, find number of injuries and fatalities for each event
 groupedData <- group_by(data, evtype)
 
-groupedData
+head(groupedData)
 ```
 
-Process and subset data for effects on public health.
+<br />
+6. Process and subset data for effects on public health: get cumulative sum for each column for each event, add column showing sum of both injuries and fatalities, convert evtype values to title case.
 ```{r}
 healthEffect <- summarise(groupedData, deaths=sum(fatalities, na.rm=TRUE), injured=sum(injuries, na.rm=TRUE))
 
@@ -84,10 +89,11 @@ events <- healthEffect[,1]
 events <- gsub("\\b([A-Z])([A-Z]+)", "\\U\\1\\L\\2" ,events, perl=TRUE)
 healthEffect[,1] <- events
 
-healthEffect
+head(healthEffect)
 ```
 
-Process and subset data for economic impact.
+<br />
+7. Process and subset data for economic impact: get cumulative sum for each column for each event, add column showing sum of both property damage and crop damage, convert evtype values to title case.
 ```{r}
 ecoEffect <- summarise(groupedData, propDamage=sum(propDamage, na.rm=TRUE), cropDamage=sum(cropDamage, na.rm=TRUE))
 
@@ -99,10 +105,14 @@ events <- ecoEffect[,1]
 events <- gsub("\\b([A-Z])([A-Z]+)", "\\U\\1\\L\\2" ,events, perl=TRUE)
 ecoEffect[,1] <- events
 
-ecoEffect
+head(ecoEffect)
 ```
 
+<br />
+<br />
+
 ##Results
+###Population Health
 Find the top 10 events for incidents, defined by the sum of injuries and fatalities.
 ```{r message=FALSE}
 ##subset to the top 10 incidents, melt table so it can be plotted
@@ -120,10 +130,11 @@ head(plotData)
 ```
 
 ```{r message=FALSE, fig.width = 8, fig.height= 8}
-## load gridExtra library, need to plot as 3 charts rather than normal facets so y
-## axis is more readable
+##load gridExtra library, need to plot as 3 charts rather than normal facets so y
+##axis is more readable
 library(gridExtra)
 library(ggplot2)
+library(scales)
 
 g1 <- ggplot(subset(plotData, variable == "Fatalities & Injuries"), aes(evtype, value))
 g1 <- g1 + geom_bar(stat="identity") + facet_wrap(~variable)
@@ -143,7 +154,13 @@ g3 <- g3 + theme(text = element_text(size=9))
 
 grid.arrange(g1,g2,g3)
 ```
+<br />
+As we can see from the above figure, Tornadoes are responsible for the most fatalities as well as the most injuries with excessive heat coming in at a distant second for both categories.
 
+<br />
+<br />
+
+###Economic Consequences   
 Find the top 10 events for total damage, defined as the sum of crop and property damage.
 ```{r message=FALSE}
 ##subset to the top 10 incidents, melt table so it can be plotted
@@ -160,28 +177,29 @@ head(plotData)
 ```
 
 ```{r message=FALSE, fig.width = 8, fig.height= 8}
-## load gridExtra library, need to plot as 3 charts rather than normal facets so y
-## axis is more readable
+##need to plot as 3 charts rather than normal facets so y axis is more readable
 
 g1 <- ggplot(subset(plotData, variable == "Total Damage $"), aes(evtype, value))
 g1 <- g1 + geom_bar(stat="identity") + facet_wrap(~variable)
 g1 <- g1 + ggtitle("Economic Impact by Event Type") 
 g1 <- g1 + xlab("Event") + ylab("Dollars")
+g1 <- g1 + scale_y_continuous(labels=dollar)
 g1 <- g1 + theme(text = element_text(size=9))
 
 g2 <- ggplot(subset(plotData, variable == "Property Damage $"), aes(evtype, value))
 g2 <- g2 + geom_bar(stat="identity") + facet_wrap(~variable)
 g2 <- g2 + xlab("Event") + ylab("Dollars")
+g2 <- g2 + scale_y_continuous(labels=dollar)
 g2 <- g2 + theme(text = element_text(size=9))
 
 g3 <- ggplot(subset(plotData, variable == "Crop Damage $"), aes(evtype, value))
 g3 <- g3 + geom_bar(stat="identity") + facet_wrap(~variable)
 g3 <- g3 + xlab("Event") + ylab("Dollars")
+g3 <- g3 + scale_y_continuous(labels=dollar)
 g3 <- g3 + theme(text = element_text(size=9))
 
 grid.arrange(g1,g2,g3)
 ```
 <br />
-<br />
-
+As we can see from the above figure, floods were resposible for the most cumulative total damage of both property and crops over the measured period.  However, when looking exclusively at crops, drought was the event that had the greatest economic impact.
 
